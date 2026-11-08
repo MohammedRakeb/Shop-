@@ -20,9 +20,12 @@ input,select,textarea{width:100%;font:inherit;padding:10px;margin:4px 0;border:1
 #ov{position:fixed;inset:0;background:#000;z-index:9;display:flex;flex-direction:column}#ov[hidden]{display:none}#cam{flex:1;width:100%;object-fit:cover}
 #tt{position:fixed;bottom:80px;inset-inline:16px;background:var(--ink);color:var(--bg);padding:10px;border-radius:12px;text-align:center;opacity:0;transition:.3s;pointer-events:none}#tt.on{opacity:1}
 .box{max-width:420px;margin:40px auto}
+#rc{position:fixed;inset:0;z-index:8;background:var(--bg);overflow-y:auto;padding:14px}#rc[hidden]{display:none}
+.paper{background:#fff;color:#000;max-width:380px;margin:0 auto;padding:16px;border-radius:6px;font-size:14px;line-height:1.7}.paper h2{text-align:center;margin:0}.paper .ln{display:flex;gap:6px;border-bottom:1px dashed #999;padding:2px 0}.paper .ln span:first-child{flex:1}.paper .tt{font-size:18px;font-weight:800;border:0;padding-top:8px}
+@media print{header,main,nav,#ov,#tt,.np{display:none!important}html,body{height:auto;display:block;background:#fff}#rc{position:static;overflow:visible;padding:0;background:#fff}.paper{max-width:none;padding:0}}
 </style></head><body>
 <header id=hd></header><main id=app><p style="padding:24px">جارٍ التحميل…</p></main><nav id=nv></nav>
-<div id=ov hidden><video id=cam playsinline muted></video><button class=b data-a=stop>إغلاق الكاميرا</button></div><div id=tt></div>
+<div id=ov hidden><video id=cam playsinline muted></video><button class=b data-a=stop>إغلاق الكاميرا</button></div><div id=tt></div><div id=rc hidden></div>
 <script>addEventListener('error',e=>{document.body.insertAdjacentHTML('afterbegin','<pre style="color:#c00;direction:ltr;white-space:pre-wrap;padding:12px">'+(e.message||('تعذّر تحميل: '+((e.target&&e.target.src)||'')))+'</pre>')},true)</script>
 <script>
 (function(){var S=['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2','https://fastly.jsdelivr.net/npm/@supabase/supabase-js@2','https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js'],i=0,A=function(h){document.getElementById('app').innerHTML=h};
@@ -58,15 +61,36 @@ async function boot(){
  const r=await db.rpc('my_branches');BR=r.data||(r.error&&!r.error.code?L('br',[]):[]);S('br',BR);
  if(!BR.length)return setupV();
  br=BR.find(b=>b.branch_id===L('curbr',''))||BR[0];role=br.role;ST=L('ST_'+br.branch_id,{});
- const T={CASHIER:[['sell','بيع']],STOREKEEPER:[['stock','المخزن']]}[role]||[['sell','بيع'],['stock','المخزن'],['dash','اللوحة'],['more','المزيد']];
+ const T={CASHIER:[['sell','بيع'],['inv','فواتيري']],STOREKEEPER:[['stock','المخزن']]}[role]||[['sell','بيع'],['inv','الفواتير'],['stock','المخزن'],['dash','اللوحة'],['more','المزيد']];
  $('#nv').innerHTML=T.map(t=>`<button data-a=go data-v=${t[0]}>${t[1]}</button>`).join('');
  act.go(T[0][0]);loadCat().then(sync);
 }
 function hdr(){$('#hd').innerHTML=`<b>${BR.length>1?`<select id=bs>${BR.map(b=>`<option value=${b.branch_id} ${b.branch_id==br.branch_id?'selected':''}>${esc(b.name)}</option>`).join('')}</select>`:esc(br.name)}</b>${queue.length?`<span class="p w">${queue.length} بانتظار الرفع</span>`:''}<span class="p ${navigator.onLine?'':'w'}">${navigator.onLine?'متصل':'بلا إنترنت'}</span>`;const s=$('#bs');if(s)s.onchange=e=>{S('curbr',e.target.value);boot()}}
-act.go=t=>{tab=t;document.querySelectorAll('#nv button').forEach(b=>b.classList.toggle('on',b.dataset.v==t));hdr();({sell:sellV,stock:stockV,dash:dashV,more:moreV})[t]()};
+act.go=t=>{tab=t;document.querySelectorAll('#nv button').forEach(b=>b.classList.toggle('on',b.dataset.v==t));hdr();({sell:sellV,inv:invV,stock:stockV,dash:dashV,more:moreV})[t]()};
 async function loadCat(){if(!navigator.onLine)return;const a=await db.from('pos_products').select('*').eq('active',true).order('name');if(a.data){P=a.data;S('P',P)}const s=await db.rpc('branch_stock',{p_branch:br.branch_id});if(s.data){ST={};s.data.forEach(x=>ST[x.product_id]=x.qty);S('ST_'+br.branch_id,ST)}if(tab=='sell')list()}
 
 /* ===== الكاشير (يعمل بدون إنترنت) ===== */
+/* ===== الإيصال والفواتير ===== */
+const fd=t=>new Date(t).toLocaleString('en-GB',{hour12:false}).slice(0,17);
+let cur,rcs=[];
+function rcTxt(r){return [r.br,'فاتورة '+(r.no||'مؤقتة'),fd(r.t),'------------------',...r.items.map(i=>i.n+' × '+i.q+' = '+f(i.q*i.p)),'------------------','الإجمالي: '+f(r.total),'شكراً لتعاملكم معنا'].join('\n')}
+function showRc(r){cur=r;const R=$('#rc');R.hidden=false;R.innerHTML=`<div class=paper><h2>${esc(r.br)}</h2><div style="text-align:center">فاتورة ${esc(r.no||'مؤقتة (تُرقَّم عند الرفع)')}<br>${fd(r.t)}</div><hr>${r.items.map(i=>`<div class=ln><span>${esc(i.n)} × ${i.q}</span><span>${f(i.q*i.p)}</span></div>`).join('')}<div class="ln tt"><span>الإجمالي</span><span>${f(r.total)}</span></div><p style="text-align:center;margin:10px 0 0">شكراً لتعاملكم معنا</p></div><div class=np style="max-width:380px;margin:12px auto"><button class=b data-a=wa>إرسال عبر واتساب</button><button class="b o" data-a=prt>طباعة</button><button class="b o" data-a=clr>إغلاق</button></div>`}
+act.wa=()=>open('https://wa.me/?text='+encodeURIComponent(rcTxt(cur)),'_blank');
+act.prt=()=>print();
+act.clr=()=>{$('#rc').hidden=true};
+act.rc=i=>showRc(rcs[+i]);
+async function invV(){
+ const mgr=role=='OWNER'||role=='MANAGER',d=new Date();d.setHours(0,0,0,0);
+ let H=L('rc',[]).filter(r=>new Date(r.t)>=d),src='هذا الجهاز';
+ if(mgr&&navigator.onLine){
+  $('#app').innerHTML='<p class=m>جارٍ التحميل…</p>';
+  const r=await db.from('sales').select('id,invoice_no,total,sold_at,sale_items(product_id,qty,price)').eq('branch_id',br.branch_id).gte('sold_at',d.toISOString()).order('sold_at',{ascending:false}).limit(100);
+  if(r.data){src='كل الفرع';H=r.data.map(s=>({id:s.id,no:s.invoice_no,t:s.sold_at,br:br.name,total:Number(s.total),items:s.sale_items.map(i=>{const p=P.find(x=>x.id==i.product_id);return{n:p?p.name:'سلعة',q:i.qty,p:Number(i.price)}})}))}
+ }
+ if(tab!='inv')return;
+ rcs=H;
+ const tot=H.reduce((a,r)=>a+r.total,0);
+ $('#app').innerHTML=`<h2>فواتير اليوم</h2><p class=m>المصدر: ${src} · ${H.length} فاتورة · ${f(tot)}</p>`+(H.map((r,i)=>`<button class="t c" style="width:100%" data-a=rc data-v=${i}><div class=r><span class=s>${esc(r.no||'مؤقتة')}<br><span class=m>${fd(r.t)} · ${r.items.length} صنف</span></span><b>${f(r.total)}</b></div></button>`).join('')||'<p class=m>لا فواتير بعد.</p>')}
 function sellV(){$('#app').innerHTML=`<div class=r><input id=q class=s placeholder="ابحث بالاسم أو الباركود" value="${esc(q)}"><button class=b style="width:auto" data-a=scan>مسح</button></div><div class=g id=ls></div><div id=ct></div>`;$('#q').oninput=e=>{q=e.target.value;list()};list();cartV()}
 function list(){const a=P.filter(p=>!q||p.name.includes(q)||p.barcode==q);$('#ls').innerHTML=a.map(p=>`<button class=t data-a=add data-v=${p.id}><b>${esc(p.name)}</b><span class=k style="font-size:15px">${f(p.price)}</span><span class="m ${(ST[p.id]||0)<=p.reorder?'low':''}">متوفر ${ST[p.id]||0}</span></button>`).join('')||'<p class=m>لا سلع بعد. أضفها من «المزيد».</p>'}
 function cartV(){const L2=Object.entries(cart).filter(e=>e[1]>0),tot=L2.reduce((a,[i,n])=>a+n*P.find(p=>p.id==i).price,0);$('#ct').innerHTML=`<div class=c>${L2.map(([i,n])=>{const p=P.find(x=>x.id==i);return`<div class=r><span class=s>${esc(p.name)}</span><button class=p data-a=dec data-v=${i}>−</button><b>${n}</b><button class=p data-a=add data-v=${i}>+</button><b>${f(n*p.price)}</b></div>`}).join('')||'<span class=m>الفاتورة فارغة</span>'}<div class=r><div class=s><span class=m>الإجمالي</span><div class=k>${f(tot)}</div></div><button class=b style="width:120px" data-a=pay ${L2.length?'':'disabled'}>دفع</button></div></div>`}
@@ -74,14 +98,18 @@ act.add=id=>{cart[id]=(cart[id]||0)+1;cartV()};act.dec=id=>{cart[id]--;cartV()};
 act.pay=()=>{const items=Object.entries(cart).filter(e=>e[1]>0).map(([i,n])=>({product_id:i,qty:n}));if(!items.length)return;
  const tot=items.reduce((a,i)=>a+i.qty*P.find(p=>p.id==i.product_id).price,0);
  items.forEach(i=>ST[i.product_id]=(ST[i.product_id]||0)-i.qty);S('ST_'+br.branch_id,ST);
- queue.push({id:crypto.randomUUID(),branch_id:br.branch_id,sold_at:new Date().toISOString(),payment:'CASH',discount:0,items});S('q',queue);
- cart={};toast('تم البيع: '+f(tot));sellV();hdr();sync()};
+ const sale={id:crypto.randomUUID(),branch_id:br.branch_id,sold_at:new Date().toISOString(),payment:'CASH',discount:0,items};
+ queue.push(sale);S('q',queue);
+ const rc={id:sale.id,no:'',t:sale.sold_at,br:br.name,total:tot,items:items.map(i=>{const p=P.find(x=>x.id==i.product_id);return{n:p.name,q:i.qty,p:p.price}})};
+ const H=L('rc',[]);H.unshift(rc);S('rc',H.slice(0,60));
+ cart={};sellV();hdr();showRc(rc);sync()};
 act.scan=async()=>{if(!window.BarcodeDetector)return toast('المتصفح لا يدعم الكاميرا. اكتب الباركود في خانة البحث');
  try{const d=new BarcodeDetector(),v=$('#cam'),s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});$('#ov').hidden=false;v.srcObject=s;await v.play();
  const t=setInterval(async()=>{const r=await d.detect(v).catch(()=>[]);const c=r[0]&&r[0].rawValue;if(!c||(c==lc&&Date.now()-lt<2500))return;lc=c;lt=Date.now();const p=P.find(x=>x.barcode==c);if(p){act.add(p.id);toast(p.name);navigator.vibrate&&navigator.vibrate(30)}else toast('باركود غير معروف: '+c)},600);
  act.stop=()=>{clearInterval(t);s.getTracks().forEach(x=>x.stop());$('#ov').hidden=true}}catch(e){toast('تعذّر فتح الكاميرا')}};
 /* رفع طابور الفواتير: ok/duplicate تُحذف، خطأ شبكة يبقى للمحاولة لاحقاً، خطأ بيانات يُحفظ في bad */
 async function sync(){if(sy||!queue.length||!navigator.onLine)return;sy=1;try{for(const s of [...queue]){const r=await db.rpc('record_sale',{p:s});if(r.error&&!r.error.code)break;
+ if(!r.error&&r.data&&r.data.invoice_no){const H=L('rc',[]),h=H.find(x=>x.id==s.id);if(h){h.no=r.data.invoice_no;S('rc',H)}}
  queue=queue.filter(x=>x.id!=s.id);if(r.error){const bad=L('bad',[]);bad.push({s,e:r.error.message});S('bad',bad);toast('فاتورة مرفوضة: '+r.error.message)}}S('q',queue)}catch(e){}sy=0;if(br)hdr()}
 addEventListener('online',()=>{if(br){hdr();sync();loadCat()}});addEventListener('offline',()=>{if(br)hdr()});setInterval(sync,20000);
 
