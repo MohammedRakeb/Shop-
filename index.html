@@ -24,8 +24,18 @@ input,select,textarea{width:100%;font:inherit;padding:10px;margin:4px 0;border:1
 <header id=hd></header><main id=app><p style="padding:24px">جارٍ التحميل…</p></main><nav id=nv></nav>
 <div id=ov hidden><video id=cam playsinline muted></video><button class=b data-a=stop>إغلاق الكاميرا</button></div><div id=tt></div>
 <script>addEventListener('error',e=>{document.body.insertAdjacentHTML('afterbegin','<pre style="color:#c00;direction:ltr;white-space:pre-wrap;padding:12px">'+(e.message||('تعذّر تحميل: '+((e.target&&e.target.src)||'')))+'</pre>')},true)</script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+(function(){var S=['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2','https://fastly.jsdelivr.net/npm/@supabase/supabase-js@2','https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js'],i=0,A=function(h){document.getElementById('app').innerHTML=h};
+function run(){var s=document.createElement('script');s.text=document.getElementById('main').text;document.body.appendChild(s)}
+function next(){if(window.supabase&&window.supabase.createClient)return run();
+ if(i>=S.length)return A('<pre style="color:#c00;direction:ltr;white-space:pre-wrap;padding:12px">Could not load the Supabase library from any source. Check the internet and reload.</pre>');
+ A('<p style="padding:24px">جارٍ تحميل المكتبة… '+(i+1)+'/'+S.length+'</p>');
+ var el=document.createElement('script'),d=0,t;el.src=S[i++];
+ function go(){if(d)return;d=1;clearTimeout(t);next()}
+ el.onload=go;el.onerror=go;t=setTimeout(go,15000);document.head.appendChild(el)}
+next()})();
+</script>
+<script id=main type=text/plain>
 const db=supabase.createClient('https://ruygkkpkpagwfcsfgdmc.supabase.co','sb_publishable_jjJZMTqlyOZCvnw-hajuaA_0oH7Efca',{auth:{lock:(n,t,f)=>f()}});
 const $=s=>document.querySelector(s),f=n=>Math.round(n||0).toLocaleString('en-US'),esc=s=>String(s??'').replace(/[<>&"]/g,c=>'&#'+c.charCodeAt(0)+';');
 const L=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}},S=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
@@ -93,4 +103,16 @@ async function dashV(){$('#app').innerHTML='<p class=m>جارٍ التحميل�
  if(!ch)ch=db.channel('s').on('postgres_changes',{event:'*',schema:'public',table:'sales'},p=>{if(p.eventType=='UPDATE'&&p.new.total>0)toast('فاتورة جديدة: '+f(p.new.total));if(tab=='dash')dashV()}).subscribe()}
 
 /* ===== المزيد: دعوة موظف + استيراد السلع ===== */
-function moreV(){$('#app').innerHTML=`<h2>المزيد</h2><div class=c><b>دعوة موظف للفرع الحالي</b><select id=ir><option value=CASHIER>كاشير</option><option value=STOREKEEPER>أمين مخزن</option><option value=MANAGER>مدير</option></select><input id=in2 placeholder="اسم الموظف"><button class=b data-a=inv>إنشاء رمز</button><p id=ic class=k></p></div><div class=c><b>استيراد سلع (سطر لكل سلعة)</b><p class=m>الاسم,الباركود,القسم,التكلفة,السعر,حد الطلب,الصلاحية بالأيام</p><textarea id=csv rows=6>
+function moreV(){$('#app').innerHTML=`<h2>المزيد</h2><div class=c><b>دعوة موظف للفرع الحالي</b><select id=ir><option value=CASHIER>كاشير</option><option value=STOREKEEPER>أمين مخزن</option><option value=MANAGER>مدير</option></select><input id=in2 placeholder="اسم الموظف"><button class=b data-a=inv>إنشاء رمز</button><p id=ic class=k></p></div><div class=c><b>استيراد سلع (سطر لكل سلعة)</b><p class=m>الاسم,الباركود,القسم,التكلفة,السعر,حد الطلب,الصلاحية بالأيام</p><textarea id=csv rows=6><\/textarea><button class=b data-a=imp>استيراد</button></div><button class="b o" data-a=out>تسجيل الخروج</button>`}
+act.inv=async()=>{const r=await db.rpc('create_invite',{p_branch:br.branch_id,p_role:$('#ir').value,p_name:$('#in2').value||'موظف'});$('#ic').textContent=r.error?r.error.message:'الرمز: '+r.data+' (صالح 48 ساعة)'};
+act.imp=async()=>{const o=(await db.from('branches').select('org_id').eq('id',br.branch_id).single()).data;if(!o)return toast('تعذّر');
+ const rows=$('#csv').value.split('\n').map(l=>l.split(',').map(x=>x.trim())).filter(c=>c.length>=5&&c[1]&&!isNaN(c[3])&&!isNaN(c[4])).map(c=>({org_id:o.org_id,name:c[0],barcode:c[1],category:c[2]||null,cost:+c[3],price:+c[4],reorder:+c[5]||10,shelf_days:+c[6]||null}));
+ if(!rows.length)return toast('لا أسطر صالحة');const r=await db.from('products').upsert(rows,{onConflict:'org_id,barcode'});r.error?toast(r.error.message):(toast('تم استيراد '+rows.length+' سلعة'),loadCat())};
+
+document.addEventListener('click',e=>{const a=e.target.closest('[data-a]');if(a&&act[a.dataset.a])act[a.dataset.a](a.dataset.v)});
+if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(r=>r.forEach(x=>x.unregister()));caches.keys().then(k=>k.forEach(x=>caches.delete(x)))}
+const fail=e=>{$('#app').innerHTML='<pre style="color:#c00;direction:ltr;white-space:pre-wrap;padding:12px">'+esc(e&&e.message||e)+'</pre>'};
+addEventListener('unhandledrejection',e=>fail(e.reason));
+setTimeout(()=>{if(!$('#hd').innerHTML&&!$('#app').querySelector('.box'))fail('تأخر التحميل: تحقق من الإنترنت ثم حدّث الصفحة')},10000);
+boot().catch(fail);
+</script></body></html>
