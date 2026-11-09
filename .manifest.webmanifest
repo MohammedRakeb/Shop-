@@ -1,0 +1,15 @@
+{
+ "name": "إدارة المخزن والكاشير",
+ "short_name": "المخزن",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "orientation": "portrait",
+ "background_color": "#F4F6FA",
+ "theme_color": "#2563EB",
+ "lang": "ar",
+ "dir": "rtl",
+ "icons": [
+  { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+ ]
+}
